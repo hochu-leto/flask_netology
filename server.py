@@ -17,7 +17,10 @@ atexit.register(lambda: engine.dispose())
 
 
 class HttpError(Exception):
-    pass
+    def __init__(self, status_code, error_message):
+        self.status_code = status_code
+        self.error_mes = error_message
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -28,6 +31,15 @@ class User(Base):
 
 
 Base.metadata.create_all(engine)
+
+
+@app.errorhandler(HttpError)
+def http_error_handler(error):
+    response = jsonify({
+        'error': error.message
+    })
+    response.status_code = 400
+    return response
 
 
 class UserView(MethodView):
@@ -47,10 +59,9 @@ class UserView(MethodView):
                     'registration_time': user.registration_time.isoformat()
                 })
             except IntegrityError:
-                responce = jsonify({
-                    'error': 'user уже есть'})
-                responce.status = 400
-                return responce
+                raise HttpError(400, 'user уже есть')
+
+
 
 # @flask.route('/test/', methods=['GET'])
 # def test():
