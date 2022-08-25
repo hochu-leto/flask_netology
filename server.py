@@ -1,8 +1,10 @@
 import atexit
 import json
 
-from flask import Flask
+from flask import Flask, request, jsonify
+from flask.views import MethodView
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -10,9 +12,12 @@ engine = create_engine('postgresql://admin:admin@127.0.0.1:5431/flask_netology')
 
 Base = declarative_base()
 Session = sessionmaker(bind=engine)
-flask = Flask('server')
+app = Flask('server')
 atexit.register(lambda: engine.dispose())
 
+
+class HttpError(Exception):
+    pass
 
 class User(Base):
     __tablename__ = 'users'
@@ -25,13 +30,36 @@ class User(Base):
 Base.metadata.create_all(engine)
 
 
-@flask.route('/test/', methods=['GET'])
-def test():
-    # return json.dumps({'status': 'OK'})
-    return jsonify({'status': 'OK'})
+class UserView(MethodView):
 
+    def get(self):
+        pass
 
-flask.run(
+    def post(self):
+        json_data = request.json
+        with Session() as ses:
+            user = User(email=json_data['email'], password=json_data['password'])
+            ses.add(user)
+            try:
+                ses.commit()
+                return jsonify({
+                    'id': user.id,
+                    'registration_time': user.registration_time.isoformat()
+                })
+            except IntegrityError:
+                responce = jsonify({
+                    'error': 'user уже есть'})
+                responce.status = 400
+                return responce
+
+# @flask.route('/test/', methods=['GET'])
+# def test():
+#     # return json.dumps({'status': 'OK'})
+#     return jsonify({'status': 'OK'})
+
+app.add_url_rule('/users/', view_func=UserView.as_view('create_user'), methods=['POST'])
+
+app.run(
     host='0.0.0.0',
     port=6000
 )
