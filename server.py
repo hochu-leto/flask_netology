@@ -1,8 +1,6 @@
 import atexit
-import json
 import re
 import uuid
-from pprint import pprint
 
 from flask import Flask, request, jsonify
 from flask.views import MethodView
@@ -22,12 +20,7 @@ app = Flask('server')
 atexit.register(lambda: engine.dispose())
 
 PASSWORD_REG = re.compile("^(?=.*[a-z_])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*#?&_])[A-Za-z\d@$!#%*?&_]{8,200}$")
-#UUID_REG = re.compile('^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$')
 UUID_REG = re.compile('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
-
-
-# PASSWORD_REG = re.compile('^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,10}$')
-# PASSWORD_REG = re.compile('^(?=[^\d_].*?\d)\w(\w|[!@#$%]){7,20}')
 
 
 class HttpError(Exception):
@@ -96,46 +89,10 @@ def validation_error_handler(error: ValidationError):
     return response
 
 
-def check_token(session):
-    r = request.headers
-    token = (
-        session.query(Token)
-        .join(User)
-        .filter(
-            User.email == request.headers.get("email"),
-            Token.id == request.headers.get("token"),
-        )
-        .first()
-    )
-    if token is None:
-        raise HttpError(401, "invalid token")
-    return token
-
-
 class UserView(MethodView):
 
     def get(self):
-        with Session() as ses:
-            # users = ses.query(User)
-            # user_list = []
-            # for user in users:
-            #     user_list.append({'user_id': user.id,
-            #                       'email': user.email,
-            #                       'password': user.password,
-            #                       'token': ses.query(Token)
-            #                      .join(User)
-            #                      .filter(User.id == user.id, )
-            #                      .first()})
-            # pprint(user_list)
-            # return jsonify(user_list)
-            users = ses.query(Token)
-            user_list = []
-            for user in users:
-                user_list.append({'token_id': user.id,
-                                  'creation_time': user.creation_time,
-                                  'user_id': user.user_id})
-            pprint(user_list)
-            return jsonify(user_list)
+        pass
 
     def post(self):
         json_data = request.json
@@ -172,7 +129,6 @@ class AdCreateModel(BaseModel):
             raise ValueError('description is too short')
         if len(value) > 255:
             raise ValueError('description is too long')
-
         return value
 
     @validator('header')
@@ -181,7 +137,6 @@ class AdCreateModel(BaseModel):
             raise ValueError('header is too short')
         if len(value) > 35:
             raise ValueError('header is too long')
-
         return value
 
     @validator('token')
@@ -191,15 +146,48 @@ class AdCreateModel(BaseModel):
         return value
 
 
-
 class AvitoView(MethodView):
 
     def delete(self):
-        pass
+        with Session() as session:
+            ad = (session.query(Ad)
+                  .filter(Ad.id == request.json['ad_id'])
+                  .first()
+                  )
+        if not ad:
+            raise HttpError(400, 'wrong ad id')
+        if ad.user_id != int(request.json['user_id']):
+            raise HttpError(400, 'user is not owner')
+        with Session() as session:
+            session.delete(ad)
+            session.commit()
+        return jsonify({'message': 'ad deleted'})
 
     def get(self):
-        print('hello')
-        return jsonify({'text': "hello"})
+        if not request.is_json:
+            with Session() as session:
+                ads = session.query(Ad)
+                ads_list = []
+                for ad in ads:
+                    ads_list.append({
+                        'id': ad.id,
+                        'header': ad.header,
+                        'description': ad.description,
+                        'user_id': ad.user_id
+                    })
+            return jsonify(ads_list)
+
+        with Session() as session:
+            ad = (session.query(Ad)
+                  .filter(Ad.id == request.json['ad_id'])
+                  .first()
+                  )
+        if not ad:
+            raise HttpError(400, 'wrong ad id')
+        return jsonify({'id': ad.id,
+                        'header': ad.header,
+                        'description': ad.description
+                        })
 
     def post(self):
         json_data = request.json
@@ -234,7 +222,6 @@ class AvitoView(MethodView):
 
 
 app.add_url_rule('/users/', view_func=UserView.as_view('create_user'), methods=['POST'])
-app.add_url_rule('/users/', view_func=UserView.as_view('get_users'), methods=['GET'])
 app.add_url_rule('/ads/', view_func=AvitoView.as_view('create_ad'), methods=['POST'])
 app.add_url_rule('/ads/', view_func=AvitoView.as_view('get_ad'), methods=['GET'])
 app.add_url_rule('/ads/', view_func=AvitoView.as_view('delete_ad'), methods=['DELETE'])
